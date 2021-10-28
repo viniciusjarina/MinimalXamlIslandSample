@@ -40,6 +40,9 @@ LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 bool FilterMessage(const MSG* msg);
 bool NavigateFocus(MSG* msg);
+bool HandleAccessKeyMessages(const MSG* msg);
+
+bool _isInMenuMode;
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -67,7 +70,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     MSG msg = {};
     while (GetMessageW(&msg, nullptr, 0, 0))
     {
-        const bool processedMessage = FilterMessage(&msg);
+        bool processedMessage = FilterMessage(&msg);
+        if (!processedMessage)
+            processedMessage = HandleAccessKeyMessages(&msg);
 
         if (!processedMessage && !TranslateAcceleratorW(msg.hwnd, hAccelTable, &msg))
         {
@@ -150,13 +155,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     return TRUE;
 }
 
-static void ClickHandler(
-    winrt::Windows::Foundation::IInspectable const& sender,
-    winrt::Windows::UI::Xaml::RoutedEventArgs const& args)
-{
-    OutputDebugString(L"Clicked");
-}
-
 bool FilterMessage(const MSG* msg)
 {
     // When multiple child windows are present it is needed to pre dispatch messages to all
@@ -174,6 +172,85 @@ bool FilterMessage(const MSG* msg)
 
     return false;
 }
+
+static bool HandleAccessKeyOnIsland(const MSG* message, HWND islandHwnd)
+{
+    HWND focusWindow = ::GetFocus();
+    HWND inputWindow = ::GetWindow(islandHwnd, GW_HWNDNEXT);
+    const bool hasFocus = focusWindow == inputWindow;
+    const bool isMenuKey = message->wParam == VK_MENU;
+    bool handled = false;
+
+    if (message->message == WM_CHAR)
+    {
+        if (hasFocus || !_isInMenuMode)
+        {
+            return false;
+        }
+
+        auto result = ::SendMessage(inputWindow, message->message, message->wParam, message->lParam);
+        if (result == 0)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    if (isMenuKey)
+    {
+        auto result = ::SendMessage(inputWindow, message->message, message->wParam, message->lParam);
+        if (result == 0)
+        {
+            handled = true;
+        }
+    }
+
+    // If the message is WM_KEYDOWN we need to call TranslateMessage to receive WM_CHAR
+    if (_isInMenuMode)
+    {
+        MSG msg = *message;
+        msg.hwnd = inputWindow;
+
+        TranslateMessage(&msg);
+
+        auto result = ::SendMessage(inputWindow, message->message, message->wParam, message->lParam);
+        if (result == 0)
+        {
+            handled = true;
+        }
+    }
+
+    return false;
+}
+
+bool HandleAccessKeyMessages(const MSG* message)
+{
+    const bool isValidMessage =
+        message->message == WM_KEYDOWN ||
+        message->message == WM_KEYUP ||
+        message->message == WM_SYSKEYDOWN ||
+        message->message == WM_CHAR ||
+        message->message == WM_SYSKEYUP;
+
+    if (!isValidMessage)
+    {
+        return false;
+    }
+
+    for (auto& xamlSource : m_xamlSources)
+    {
+        HWND islandWnd{};
+        winrt::check_hresult(xamlSource.as<IDesktopWindowXamlSourceNative>()->get_WindowHandle(&islandWnd));
+        
+        bool handled = HandleAccessKeyOnIsland(message, islandWnd);
+        if (handled)
+            return true;
+    }
+
+    return false;
+}
+
 
 winrt::Windows::UI::Xaml::Hosting::XamlSourceFocusNavigationReason GetReasonFromKey(WPARAM key)
 {
@@ -403,11 +480,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         _xamlButton.Click([](auto const& /* sender */, RoutedEventArgs const& /* args */)
             {
                 _xamlButton.Content(box_value(L"Clicked1"));
+                OutputDebugString(L"Xaml Button1 clicked ***\n");
             });
 
         _xamlButton2.Click([](auto const& /* sender */, RoutedEventArgs const& /* args */)
             {
-                _xamlButton.Content(box_value(L"Clicked2"));
+                _xamlButton2.Content(box_value(L"Clicked2"));
+                OutputDebugString(L"Xaml Button2 clicked ***\n");
             });
 
         _text = TextBox();
@@ -420,6 +499,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         _desktopWindowXamlSource.Content(_stack);
 
+        _xamlButton.AccessKeyDisplayRequested([](winrt::Windows::UI::Xaml::UIElement, winrt::Windows::UI::Xaml::Input::AccessKeyDisplayRequestedEventArgs const& handler)
+            {
+                _isInMenuMode = true;
+            });
+
+        _xamlButton.AccessKeyDisplayDismissed([](winrt::Windows::UI::Xaml::UIElement, winrt::Windows::UI::Xaml::Input::AccessKeyDisplayDismissedEventArgs const& handler)
+            {
+                _isInMenuMode = false;
+            });
+        
         _desktopWindowXamlSource.TakeFocusRequested({ &OnTakeFocusRequested });
         m_xamlSources.push_back(_desktopWindowXamlSource);
 
@@ -454,10 +543,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             DestroyWindow(hWnd);
             break;
         case IDOK:
-            OutputDebugString(L"OK ***");
+            OutputDebugString(L"Win32 button 1 clicked ***\n");
             break;
         case IDCANCEL:
-            OutputDebugString(L"CANCEL **");
+            OutputDebugString(L"Win32 button 2 clicked **");
             break;
         default:
             return DefWindowProc(hWnd, message, wParam, lParam);
