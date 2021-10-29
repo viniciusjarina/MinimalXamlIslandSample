@@ -207,18 +207,12 @@ static bool HandleAccessKeyOnIsland(const MSG* message, HWND islandHwnd)
     }
 
     // If the message is WM_KEYDOWN we need to call TranslateMessage to receive WM_CHAR
-    if (_isInMenuMode)
+    if (message->message == WM_KEYDOWN && _isInMenuMode)
     {
         MSG msg = *message;
         msg.hwnd = inputWindow;
 
         TranslateMessage(&msg);
-
-        auto result = ::SendMessage(inputWindow, message->message, message->wParam, message->lParam);
-        if (result == 0)
-        {
-            handled = true;
-        }
     }
 
     return false;
