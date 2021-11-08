@@ -33,6 +33,12 @@ winrt::Windows::UI::Xaml::Controls::Button _xamlButton2{ nullptr };
 winrt::Windows::UI::Xaml::Controls::TextBox _text{ nullptr };
 winrt::Windows::UI::Xaml::Controls::StackPanel _stack{ nullptr };
 
+MenuBar _menu{ nullptr };
+MenuBarItem _menuItem1{ nullptr };
+MenuBarItem _menuItem2{ nullptr };
+MenuFlyoutItem _item1{ nullptr };
+MenuFlyoutItem _item2{ nullptr };
+
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
@@ -471,6 +477,40 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         _xamlButton2.AccessKey(L"X");
         _xamlButton2.Content(winrt::box_value(L"Button 2"));
 
+        _menu = MenuBar();
+        _menuItem1 = MenuBarItem();
+        _menuItem1.Title(L"File");
+        _menuItem1.ExitDisplayModeOnAccessKeyInvoked(true);
+        _menuItem1.AccessKey(L"F");
+
+        _menuItem2 = MenuBarItem();
+        _menuItem2.Title(L"Edit");
+        _menuItem2.AccessKey(L"E");
+
+        _item1 = MenuFlyoutItem();
+        _item1.Text(L"New");
+        _item1.AccessKey(L"N");
+        _item1.Click([](auto const& /* sender */, RoutedEventArgs const& /* args */)
+            {
+                OutputDebugString(L"New Click ***\n");
+            });
+
+        _item2 = MenuFlyoutItem();
+        _item2.Text(L"Open");
+        _item2.AccessKey(L"O");
+        _item2.Click([](auto const& /* sender */, RoutedEventArgs const& /* args */)
+            {
+                OutputDebugString(L"Open Click ***\n");
+            });
+
+        auto fileItems = _menuItem1.Items();
+        fileItems.Append(_item1);
+        fileItems.Append(_item2);
+        
+        auto items = _menu.Items();
+        items.Append(_menuItem1);
+        items.Append(_menuItem2);
+
         _xamlButton.Click([](auto const& /* sender */, RoutedEventArgs const& /* args */)
             {
                 _xamlButton.Content(box_value(L"Clicked1"));
@@ -487,11 +527,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         _text.Text(L"Text");
 
         _stack = StackPanel();
+        _desktopWindowXamlSource.Content(_stack);
+
         auto collection = _stack.Children();
         collection.Append(_xamlButton);
         collection.Append(_xamlButton2);
+        collection.Append(_menu);
 
-        _desktopWindowXamlSource.Content(_stack);
 
         _xamlButton.AccessKeyDisplayRequested([](winrt::Windows::UI::Xaml::UIElement, winrt::Windows::UI::Xaml::Input::AccessKeyDisplayRequestedEventArgs const& handler)
             {
